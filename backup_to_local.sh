@@ -3,7 +3,7 @@
 # LOAD ENV VARS
 ENV_FILE=".env"
 if [ -f "$ENV_FILE" ]; then
-  export $(grep -v '^#' "$ENV_FILE" | xargs)
+  export $(grep -v '^#' "$ENV_FILE" | xargs) # Filter out comments and load variables into current shell session
 else
   echo "Missing .env file at $ENV_FILE"
   exit 1
@@ -30,8 +30,6 @@ if [[ "$TYPE" != "weekly" && "$TYPE" != "monthly" && "$TYPE" != "yearly" ]]; the
     error_exit "Invalid backup type: $TYPE. Use weekly, monthly, or yearly."
 fi
 
-log "$TYPE type validated..."
-
 # CREATE BACKUP FILE LOCATION
 log "Creating backup directory..."
 BACKUP_NAME="${TYPE}_backup_${DATE}.tar.gz"
@@ -40,20 +38,15 @@ mkdir -p "$TMP_DIR" || error_exit "Failed to create temp directory."
 
 log "Starting $TYPE backup..."
 
-# COPY DUMMY DB
-# cp "$DB_DUMP" "$TMP_DIR/db.sql" || error_exit "Failed to copy DB dump."
-cp -r "$SITE_DIR/." "$TMP_DIR" || error_exit "Failed to copy site files."
+# COPY DB
+cp -r "$SITE_DIR/." "$TMP_DIR" || error_exit "Failed to copy site files." 
 cp "$DB_DUMP" "$TMP_DIR" || error_exit "Failed to copy DB dump."
 
 # ARCHIVE FILES AND DB
-tar -czf "$BUCKET/$TYPE/$BACKUP_NAME" -C "$TMP_DIR" .
+tar -czf "$BUCKET/$TYPE/$BACKUP_NAME" -C "$TMP_DIR" . # Create archive file from the contents of $TMP_DIR
 if [ $? -ne 0 ]; then
     error_exit "Failed to create archive."
 fi
-
-# UPLOAD TO TMP LOCATION
-# mkdir -p "$BUCKET/$TYPE"
-# cp "$TMP_DIR/$BACKUP_NAME" "$BUCKET/$TYPE/$BACKUP_NAME" ||  error_exit "Failed to copy backup to bucket."
 
 log "Backup stored: $BUCKET/$TYPE/$BACKUP_NAME"
 
@@ -61,3 +54,17 @@ log "Backup stored: $BUCKET/$TYPE/$BACKUP_NAME"
 rm -rf "$TMP_DIR"
 log "TMP files deleted."
 
+# -- RETENTION POLICY--
+log "Applying retention policy for $TYPE backups..."
+
+find "$BUCKET/$TYPE" -type f -name "*.tar.gz" | while read -r file; do # Find and loop through all of the .tag.gz file in backup TYPE folder
+    file_date=$(date -r "$file" +%s) # Last modified timestamp
+    now=$(date +%s)
+    age_days=$(((now - file_date)/ 86400))
+
+    if [[ "$TYPE" == "weekly" && "$age_days" -gt 60 ]]; then
+        rm "$file" && log "Deleted old weekly backup: $file"
+    elif [[ "$TYPE" == "monthly" && "$age_days" -gt 365 ]]; then
+        rm "$file" && log "Deleted old monthly backup: $file"
+    fi
+done
