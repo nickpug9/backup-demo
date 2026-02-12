@@ -38,7 +38,40 @@ mkdir -p "$TMP_DIR" || error_exit "Failed to create temp directory."
 
 log "Starting $TYPE backup..."
 
-# COPY DB
+# -- UNTESTED --
+# CREATE BACKUP FILE LOCATION
+log "Creating tmp folder..."
+mkdir -p "$TMP_BUCKET" || error_exit "Failed to create temp directory."
+DUMP_FILE="$TMP_BUCKET/${TYPE}_backup_${DATE}.sql"
+
+# Export DB to tmp folder
+log "Exporting live DB to $DUMP_FILE..."
+log "$LIVE_DB_HOST"
+log "$LIVE_SSH_USER"
+# ssh $LIVE_SSH_USER "mysqldump --opt --user='$LIVE_DB_USER' -p'$LIVE_DB_PASS' --host='$LIVE_DB_HOST' --no-tablespaces '$LIVE_DB_NAME'" > "$DUMP_FILE" || error_exit "Failed to export database."
+
+ssh -T "$LIVE_SSH_USER" \
+  "mysqldump \
+    --opt \
+    --user=$LIVE_DB_USER \
+    --password=$LIVE_DB_PASS \
+    --host=$LIVE_DB_HOST \
+    --no-tablespaces \
+    $LIVE_DB_NAME" \
+  > "$DUMP_FILE"
+
+
+
+
+# Check if dump file exists and is not empty
+if [ ! -s "$DUMP_FILE" ]; then
+  error_exit "Database dump file is missing or empty."
+fi
+
+log "Database dump file created successfully."
+# -- UNTESTED --
+
+# COPY DB from local
 cp -r "$SITE_DIR/." "$TMP_DIR" || error_exit "Failed to copy site files." 
 cp "$DB_DUMP" "$TMP_DIR" || error_exit "Failed to copy DB dump."
 
