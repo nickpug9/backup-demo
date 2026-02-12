@@ -1,1 +1,0 @@
-CREATEDB test_db;
